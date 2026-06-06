@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber Tracker // Anime</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="container">
+        <div class="search-wrapper" id="main-search-wrapper">
+            <i class="fa-solid fa-search search-icon"></i>
+            <input type="text" id="search-input" class="search-input" placeholder="INITIALIZE SEARCH...">
+            <i class="fa-solid fa-times clear-icon" id="clear-search" onclick="clearSearch()"></i>
+            <div class="autocomplete-box" id="autocomplete-box"></div>
+        </div>
+
+        <div class="search-wrapper" id="recommend-search-wrapper" style="display: none;">
+            <i class="fa-solid fa-crosshairs search-icon"></i>
+            <input type="text" id="recommend-input" class="search-input recommend-mode" placeholder="Target an anime (e.g., Monster, Erased)...">
+            <div class="autocomplete-box" id="recommend-autocomplete-box"></div>
+        </div>
+
+        <div id="account-panel" class="account-panel" style="display:none;">
+            <div class="account-header">
+                <h3 class="account-title">ACCOUNT ACCESS</h3>
+                <span id="auth-badge" class="auth-badge">OFFLINE</span>
+            </div>
+            <p id="auth-status" class="auth-status">Not logged in</p>
+            <div class="auth-form">
+                <input id="auth-email" class="search-input" type="email" placeholder="Email">
+                <input id="auth-password" class="search-input" type="password" placeholder="Password">
+                <div class="auth-row">
+                    <button onclick="signUp()" class="auth-btn signup">Sign Up</button>
+                    <button onclick="signIn()" class="auth-btn login">Login</button>
+                </div>
+                <button onclick="signOutUser()" class="auth-btn logout">Logout</button>
+            </div>
+        </div>
+
+        <div id="notify-wrap" class="notify-wrap"></div>
+
+        <div class="anime-grid" id="anime-grid"></div>
+    </div>
+
+    <nav class="bottom-nav">
+        <button class="nav-btn active" onclick="switchTab('home')">
+            <i class="fa-solid fa-bolt"></i>
+            <span>LATEST</span>
+        </button>
+        <button class="nav-btn" onclick="switchTab('recommend')">
+            <i class="fa-solid fa-compass"></i>
+            <span>DISCOVER</span>
+        </button>
+        <button class="nav-btn" onclick="switchTab('mylist')">
+            <i class="fa-solid fa-bookmark"></i>
+            <span>MY LIST</span>
+        </button>
+        <button class="nav-btn" onclick="switchTab('done')">
+            <i class="fa-solid fa-check-double"></i>
+            <span>DONE</span>
+        </button>
+        <button class="nav-btn" onclick="switchTab('account')">
+            <i class="fa-solid fa-user"></i>
+            <span>ACCOUNT</span>
+        </button>
+    </nav>
+
+    <div class="toast" id="toast"><i class="fa-solid fa-check"></i> DATA COPIED</div>
+
+    <div class="modal" id="details-modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <div class="modal-header">
+                <img src="" alt="" id="modal-img" class="modal-img">
+                <div class="modal-info">
+                    <h2 id="modal-title">TITLE</h2>
+                    <p>FORMAT: <span id="modal-meta-type">-</span></p>
+                    <p>STATUS: <span id="modal-meta-status">-</span></p>
+                    <p>EPISODES: <span id="modal-meta-ep">-</span></p>
+                    <p>SCORE: <span id="modal-meta-score">-</span></p>
+                </div>
+            </div>
+            <div class="modal-synopsis" id="modal-synopsis"></div>
+            
+            <div class="more-like-this" id="modal-recommendations-container">
+                <h3>SIMILAR TARGETS DETECTED</h3>
+                <div class="recommendations-scroll" id="modal-recommendations">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="script.js"></script>
+</body>
+</html>
