@@ -64,6 +64,10 @@ function getInitial(v) {
     return raw ? raw[0].toUpperCase() : '?'; 
 }
 
+function getAnimeTitle(anime) {
+    return anime.title_english || anime.title || 'Unknown';
+}
+
 function enhanceAccountPanelUI() {
     const panel = document.getElementById('account-panel');
     if (!panel || document.getElementById('profile-block')) return;
@@ -245,7 +249,7 @@ async function fetchAutocomplete(query, boxEl, onSelect, inputEl, token) {
         const data = await response.json();
         if (token !== activeSearchToken) return;
         if ((inputEl?.value || '').trim() !== query) return;
-        const list = (data.data || []).map(i => i.title || '');
+        const list = (data.data || []).map(i => getAnimeTitle(i) || '');
         const mode = inputEl.id === 'search-input' ? 'main' : 'recommend';
         lastAutocompleteTitles[mode] = list;
 
@@ -261,8 +265,8 @@ async function fetchAutocomplete(query, boxEl, onSelect, inputEl, token) {
         data.data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'suggestion-item';
-            div.innerHTML = `<img src="${item.images.jpg.small_image_url}" alt="${item.title}"> <span>${item.title}</span>`;
-            div.onclick = () => onSelect({ id: item.mal_id, title: item.title });
+            div.innerHTML = `<img src="${item.images.jpg.small_image_url}" alt="${getAnimeTitle(item)}"> <span>${getAnimeTitle(item)}</span>`;
+            div.onclick = () => onSelect({ id: item.mal_id, title: getAnimeTitle(item) });
             boxEl.appendChild(div);
         });
     } catch (error) {
@@ -416,34 +420,52 @@ async function runDiscoverSuggestions() {
 function switchTab(tabName) {
     currentTab = tabName;
     showingCompletedOnly = false;
-    const toggleCheckbox = document.getElementById('list-toggle');
-    if (toggleCheckbox) toggleCheckbox.checked = false;
+    closeModal();
     
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = [...document.querySelectorAll('.nav-btn')].find(b => b.getAttribute('onclick')?.includes(`'${tabName}'`));
     if (activeBtn) activeBtn.classList.add('active');
+    
     document.getElementById('account-panel').style.display = tabName === 'account' ? 'block' : 'none';
-    const mylistHeader = document.getElementById('mylist-header');
-    if (mylistHeader) mylistHeader.style.display = tabName === 'mylist' ? 'block' : 'none';
+    const mainSearchWrapper = document.getElementById('main-search-wrapper');
+    const recommendSearchWrapper = document.getElementById('recommend-search-wrapper');
+    const mylistSearchWrapper = document.getElementById('mylist-search-wrapper');
 
     if (tabName === 'recommend') {
         discoverResultsMode = 'search';
-        document.getElementById('main-search-wrapper').style.display = 'none';
-        document.getElementById('recommend-search-wrapper').style.display = 'block';
+        mainSearchWrapper.style.display = 'none';
+        recommendSearchWrapper.style.display = 'block';
+        mylistSearchWrapper.style.display = 'none';
         document.getElementById('anime-grid').innerHTML = '<div class="msg-info">SEARCH AN ANIME, SELECT FEW, THEN TAP SELECTION.</div>';
+    } else if (tabName === 'mylist') {
+        mainSearchWrapper.style.display = 'none';
+        recommendSearchWrapper.style.display = 'none';
+        mylistSearchWrapper.style.display = 'block';
+        loadTabContent();
     } else if (tabName === 'account') {
-        document.getElementById('main-search-wrapper').style.display = 'none';
-        document.getElementById('recommend-search-wrapper').style.display = 'none';
+        mainSearchWrapper.style.display = 'none';
+        recommendSearchWrapper.style.display = 'none';
+        mylistSearchWrapper.style.display = 'none';
         document.getElementById('anime-grid').innerHTML = '';
     } else {
-        document.getElementById('main-search-wrapper').style.display = 'block';
-        document.getElementById('recommend-search-wrapper').style.display = 'none';
+        mainSearchWrapper.style.display = 'block';
+        recommendSearchWrapper.style.display = 'none';
+        mylistSearchWrapper.style.display = 'none';
         clearSearch();
     }
 }
 
 function toggleListView() {
     showingCompletedOnly = !showingCompletedOnly;
+    const stateIn = document.querySelector('.toggle-state-in');
+    const stateDone = document.querySelector('.toggle-state-done');
+    if (showingCompletedOnly) {
+        if (stateIn) stateIn.style.display = 'none';
+        if (stateDone) stateDone.style.display = 'inline';
+    } else {
+        if (stateIn) stateIn.style.display = 'inline';
+        if (stateDone) stateDone.style.display = 'none';
+    }
     loadTabContent();
 }
 
@@ -487,7 +509,7 @@ function processApiData(apiData) {
     if (apiData && apiData.length > 0) {
         const animes = apiData.map(item => ({
             id: item.mal_id,
-            title: item.title,
+            title: getAnimeTitle(item),
             image: item.images.jpg.large_image_url,
             synopsis: item.synopsis || 'No data.',
             type: item.type || 'N/A',
@@ -495,7 +517,10 @@ function processApiData(apiData) {
             episodes: item.episodes || 'TBA',
             score: item.score || 'N/A',
             completed: false,
-            imdb_id: item.external?.imdb || null
+            imdb_id: item.external?.imdb || null,
+            genres: item.genres || [],
+            themes: item.themes || [],
+            demographics: item.demographics || []
         }));
         renderGrid(animes, false);
     } else document.getElementById('anime-grid').innerHTML = '<div class="msg-info">0 MATCHES FOUND.</div>';
@@ -596,64 +621,88 @@ async function openModal(anime) {
     document.getElementById('modal-meta-score').innerText = anime.score;
     document.getElementById('modal-synopsis').innerText = anime.synopsis;
     document.getElementById('details-modal').classList.add('open');
-    await loadRecommendations(anime.id);
+    await loadRecommendations(anime);
 }
 
-async function loadRecommendations(malId) {
+async function loadRecommendations(anime) {
     const holder = document.getElementById('modal-recommendations');
     holder.innerHTML = '<p style="color:#94a3b8;">Loading...</p>';
     try {
-        const response = await fetch(`https://api.jikan.moe/v4/anime/${malId}/recommendations`);
+        const response = await fetch(`https://api.jikan.moe/v4/anime/${anime.id}/recommendations`);
         const data = await response.json();
         const recs = (data.data || []).slice(0, 12);
-        if (!recs.length) {
+        
+        if (!recs.length || recs.length < 5) {
+            // Fallback to discover algorithm
+            console.log('Using discover fallback algorithm for recommendations');
+            const query = await generateSuggestionsFromAnimes([anime.id]);
+            if (query) {
+                const response2 = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=12`);
+                const data2 = await response2.json();
+                const fallbackRecs = (data2.data || []).filter(x => x.mal_id !== anime.id).slice(0, 12);
+                if (fallbackRecs.length > 0) {
+                    return displayRecommendations(fallbackRecs);
+                }
+            }
             holder.innerHTML = '<p style="color:#94a3b8;">No similar targets found.</p>';
             return;
         }
-        holder.innerHTML = '';
-        recs.forEach(r => {
-            const e = r.entry;
-            const anime = {
-                id: e.mal_id,
-                title: e.title,
-                image: e.images.jpg.large_image_url || e.images.jpg.image_url,
-                synopsis: 'Open details to fetch summary.',
-                type: 'N/A',
-                status: 'Unknown',
-                episodes: 'TBA',
-                score: 'N/A',
-                completed: false
-            };
-            const div = document.createElement('div');
-            div.className = 'mini-card';
-            div.innerHTML = `<img src="${anime.image}" loading="lazy" alt="${anime.title}"><p>${anime.title}</p>`;
-            div.onclick = async () => {
-                try {
-                    const detailsResp = await fetch(`https://api.jikan.moe/v4/anime/${anime.id}/full`);
-                    const detailsData = await detailsResp.json();
-                    const d = detailsData.data;
-                    openModal({
-                        id: d.mal_id,
-                        title: d.title,
-                        image: d.images.jpg.large_image_url,
-                        synopsis: d.synopsis || 'No data.',
-                        type: d.type || 'N/A',
-                        status: d.status || 'Unknown',
-                        episodes: d.episodes || 'TBA',
-                        score: d.score || 'N/A',
-                        imdb_id: d.external?.imdb || null,
-                        completed: false
-                    });
-                } catch (error) {
-                    console.error('Load recommendation detail error:', error);
-                }
-            };
-            holder.appendChild(div);
-        });
+        displayRecommendations(recs.map(r => r.entry));
     } catch (error) {
         console.error('Load recommendations error:', error);
         holder.innerHTML = '<p style="color:#94a3b8;">Failed to load similar targets.</p>';
     }
+}
+
+function displayRecommendations(recData) {
+    const holder = document.getElementById('modal-recommendations');
+    holder.innerHTML = '';
+    
+    recData.forEach(e => {
+        const anime = {
+            id: e.mal_id,
+            title: getAnimeTitle(e),
+            image: e.images?.jpg?.large_image_url || e.images?.jpg?.image_url || e.images?.jpg?.small_image_url,
+            synopsis: e.synopsis || 'Open details to fetch summary.',
+            type: e.type || 'N/A',
+            status: e.status || 'Unknown',
+            episodes: e.episodes || 'TBA',
+            score: e.score || 'N/A',
+            completed: false,
+            genres: e.genres || [],
+            themes: e.themes || [],
+            demographics: e.demographics || []
+        };
+        
+        const div = document.createElement('div');
+        div.className = 'mini-card';
+        div.innerHTML = `<img src="${anime.image}" loading="lazy" alt="${anime.title}"><p>${anime.title}</p>`;
+        div.onclick = async () => {
+            try {
+                const detailsResp = await fetch(`https://api.jikan.moe/v4/anime/${anime.id}/full`);
+                const detailsData = await detailsResp.json();
+                const d = detailsData.data;
+                openModal({
+                    id: d.mal_id,
+                    title: getAnimeTitle(d),
+                    image: d.images.jpg.large_image_url,
+                    synopsis: d.synopsis || 'No data.',
+                    type: d.type || 'N/A',
+                    status: d.status || 'Unknown',
+                    episodes: d.episodes || 'TBA',
+                    score: d.score || 'N/A',
+                    imdb_id: d.external?.imdb || null,
+                    completed: false,
+                    genres: d.genres || [],
+                    themes: d.themes || [],
+                    demographics: d.demographics || []
+                });
+            } catch (error) {
+                console.error('Load recommendation detail error:', error);
+            }
+        };
+        holder.appendChild(div);
+    });
 }
 
 function openPreviewFromModal() {
@@ -662,9 +711,11 @@ function openPreviewFromModal() {
     window.open(url, '_blank');
 }
 
-function closeModal() {
+function closeModal(event) {
+    if (event && event.target.id !== 'details-modal') return;
     document.getElementById('details-modal').classList.remove('open');
     document.getElementById('modal-recommendations').innerHTML = '';
+    currentModalAnime = null;
 }
 
 function showToast() {
