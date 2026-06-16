@@ -1,9 +1,10 @@
 const SUPABASE_URL = 'https://ccfgybmuamyygxybimdx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZmd5Ym11YW15eWd4eWJpbWR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODA2NTksImV4cCI6MjA5NjI1NjY1OX0.yE7TMjS_82XoWEFwd9LcTEjQDiSmyDQ4IPDI2izwYBs';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZmd5Ym11YW15eWd4eWJpbWR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODA2NTksImV4cCI6MjA5NjI1NjY1OX0.yE7TM[...]
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 let currentTab = 'home';
+let showingCompletedOnly = false;
 let favoriteAnimes = JSON.parse(localStorage.getItem('myCyberAnimeList')) || [];
 let discoverSelections = JSON.parse(localStorage.getItem('myDiscoverSelections')) || [];
 let searchTimeout = null;
@@ -226,7 +227,7 @@ async function clearCurrentAccountSavesRaw() {
     await supabaseClient.from('user_anime_list').delete().eq('user_id', currentUser.id);
     favoriteAnimes = [];
     localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
-    if (currentTab === 'mylist' || currentTab === 'done' || currentTab === 'home') loadTabContent();
+    if (currentTab === 'mylist' || currentTab === 'home') loadTabContent();
 }
 
 async function clearCurrentAccountSavesWithConfirm() {
@@ -518,8 +519,8 @@ function initDiscoverSelectionUI() {
             </div>
             <div id="discover-selection-list"></div>
             <div style="display:flex;gap:10px;margin-top:12px;">
-                <button onclick="runDiscoverSuggestions()" style="flex:1;background:#00f3ff;color:#000;border:none;padding:10px;cursor:pointer;">Suggest Me</button>
-                <button onclick="clearDiscoverSelections()" style="flex:1;background:#ff0055;color:#fff;border:none;padding:10px;cursor:pointer;">Cancel All</button>
+                <button onclick="runDiscoverSuggestions()" style="flex:1;background:#00f3ff;color:#000;border:none;padding:10px;cursor:pointer;font-weight:700;">Suggest Me</button>
+                <button onclick="clearDiscoverSelections()" style="flex:1;background:#ff0055;color:#fff;border:none;padding:10px;cursor:pointer;font-weight:700;">Cancel All</button>
             </div>
         </div>
     `;
@@ -538,14 +539,43 @@ function openSelectionModal() {
         row.style.alignItems = 'center';
         row.style.padding = '8px 0';
         row.style.borderBottom = '1px solid #1e293b';
-        row.innerHTML = `<span style="color:#e2e8f0;">${a.title}</span><button onclick="removeDiscoverSelection(${a.id})" style="background:#ff0055;color:#fff;border:none;padding:6px 10px;cursor:pointer;">Remove</button>`;
+        row.innerHTML = `<span style="color:#e2e8f0;">${a.title}</span><button onclick="removeDiscoverSelection(${a.id})" style="background:#ff0055;color:#fff;border:none;padding:6px 10px;cursor:pointer;font-weight:700;">Remove</button>`;
         list.appendChild(row);
     });
     modal.style.display = 'flex';
 }
 function closeSelectionModal() { document.getElementById('discover-selection-modal').style.display = 'none'; }
-function removeDiscoverSelection(id) { discoverSelections = discoverSelections.filter(a => a.id !== id); localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); openSelectionModal(); if (currentTab === 'recommend') loadGridSearch(recInput.value.trim() || ''); }
-function clearDiscoverSelections() { discoverSelections = []; localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); openSelectionModal(); if (currentTab === 'recommend') loadGridSearch(recInput.value.trim() || ''); }
+function removeDiscoverSelection(id) { discoverSelections = discoverSelections.filter(a => a.id !== id); localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); openSelectionModal(); }
+function clearDiscoverSelections() { discoverSelections = []; localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); openSelectionModal(); if (currentTab === 'recommend') loadTabContent(); }
+
+/**
+ * Unified suggestion algorithm using genre and theme tags
+ */
+async function generateSuggestionsFromAnimes(animeIds) {
+    try {
+        const fetched = await Promise.all(
+            animeIds.slice(0, 4).map(id => 
+                fetch(`https://api.jikan.moe/v4/anime/${id}/full`)
+                    .then(r => r.json())
+                    .catch(() => null)
+            )
+        );
+        
+        const tagSet = new Set();
+        fetched.forEach(res => {
+            const d = res?.data;
+            if (!d) return;
+            (d.genres || []).forEach(g => tagSet.add(g.name));
+            (d.themes || []).forEach(g => tagSet.add(g.name));
+            (d.demographics || []).forEach(g => tagSet.add(g.name));
+        });
+        
+        const tags = [...tagSet].slice(0, 3);
+        return tags.length > 0 ? tags.join(' ') : null;
+    } catch {
+        return null;
+    }
+}
 
 async function runDiscoverSuggestions() {
     if (!discoverSelections.length) {
@@ -558,20 +588,12 @@ async function runDiscoverSuggestions() {
     grid.innerHTML = '<div class="msg-info"><i class="fa-solid fa-circle-notch fa-spin"></i> ANALYZING TAGS...</div>';
 
     try {
-        const ids = discoverSelections.slice(0, 4).map(a => a.id);
-        const fetched = await Promise.all(ids.map(id => fetch(`https://api.jikan.moe/v4/anime/${id}/full`).then(r => r.json()).catch(() => null)));
-        const genreSet = new Set();
-        fetched.forEach(res => {
-            const d = res?.data;
-            (d?.genres || []).forEach(g => genreSet.add(g.name));
-            (d?.themes || []).forEach(g => genreSet.add(g.name));
-            (d?.demographics || []).forEach(g => genreSet.add(g.name));
-        });
-        const seed = [...genreSet].slice(0, 3).join(' ');
+        const ids = discoverSelections.map(a => a.id);
+        const query = await generateSuggestionsFromAnimes(ids);
         const fallback = discoverSelections.map(s => s.title).join(' ');
-        const query = seed || fallback;
+        const searchQuery = query || fallback;
 
-        const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=24`);
+        const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchQuery)}&limit=24`);
         const data = await response.json();
         const blocked = new Set(discoverSelections.map(s => s.id));
         const list = (data.data || []).filter(x => !blocked.has(x.mal_id));
@@ -585,12 +607,12 @@ async function pullCloudList() {
     if (!currentUser) return;
     const { data, error } = await supabaseClient.from('user_anime_list').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false });
     if (error) return;
-    favoriteAnimes = (data || []).map(r => ({ id: r.anime_id, title: r.title, image: r.image, synopsis: r.synopsis, type: r.type, status: r.status, episodes: r.episodes, score: r.score, completed: !!r.completed }));
+    favoriteAnimes = (data || []).map(r => ({ id: r.anime_id, title: r.title, image: r.image, synopsis: r.synopsis, type: r.type, status: r.status, episodes: r.episodes, score: r.score, completed: r.completed || false }));
     localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
 }
 async function pushAnimeToCloud(animeObj) {
     if (!currentUser) return;
-    await supabaseClient.from('user_anime_list').upsert({ user_id: currentUser.id, anime_id: animeObj.id, title: animeObj.title, image: animeObj.image, synopsis: animeObj.synopsis, type: animeObj.type, status: animeObj.status, episodes: animeObj.episodes, score: animeObj.score, completed: !!animeObj.completed }, { onConflict: 'user_id,anime_id' });
+    await supabaseClient.from('user_anime_list').upsert({ user_id: currentUser.id, anime_id: animeObj.id, title: animeObj.title, image: animeObj.image, synopsis: animeObj.synopsis, type: animeObj.type, status: animeObj.status, episodes: animeObj.episodes, score: animeObj.score, completed: animeObj.completed || false });
 }
 async function deleteAnimeFromCloud(animeId) {
     if (!currentUser) return;
@@ -599,10 +621,15 @@ async function deleteAnimeFromCloud(animeId) {
 
 function switchTab(tabName) {
     currentTab = tabName;
+    showingCompletedOnly = false;
+    const toggleCheckbox = document.getElementById('list-toggle');
+    if (toggleCheckbox) toggleCheckbox.checked = false;
+    
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = [...document.querySelectorAll('.nav-btn')].find(b => b.getAttribute('onclick')?.includes(`'${tabName}'`));
     if (activeBtn) activeBtn.classList.add('active');
     document.getElementById('account-panel').style.display = tabName === 'account' ? 'block' : 'none';
+    document.getElementById('mylist-header').style.display = tabName === 'mylist' ? 'block' : 'none';
 
     if (tabName === 'recommend') {
         discoverResultsMode = 'search';
@@ -620,11 +647,21 @@ function switchTab(tabName) {
     }
 }
 
+function toggleListView() {
+    showingCompletedOnly = !showingCompletedOnly;
+    loadTabContent();
+}
+
 async function loadTabContent() {
     const grid = document.getElementById('anime-grid');
     grid.innerHTML = '';
-    if (currentTab === 'mylist') return renderGrid(favoriteAnimes.filter(a => !a.completed).slice().reverse(), true);
-    if (currentTab === 'done') return renderGrid(favoriteAnimes.filter(a => a.completed), true);
+    
+    if (currentTab === 'mylist') {
+        const filtered = showingCompletedOnly 
+            ? favoriteAnimes.filter(a => a.completed)
+            : favoriteAnimes.filter(a => !a.completed);
+        return renderGrid(filtered.slice().reverse(), true);
+    }
     if (currentTab !== 'home') return;
 
     try {
@@ -686,7 +723,7 @@ function renderGrid(animeArray, isLocalTab) {
         grid.innerHTML += `
             <div class="anime-card">
                 <div class="img-container" onclick="openModal(${safeJson})">
-                    <img src="${anime.image}" loading="lazy">
+                    <img src="${anime.image}" loading="lazy" alt="${anime.title}">
                     <div class="card-tags"><span class="tag">${statusTag}</span></div>
                     <div class="card-actions">
                         <button class="action-btn heart ${heartClass}" ${heartStyle} onclick="${heartClick}">
@@ -720,10 +757,18 @@ function toggleDiscoverSelection(event, animeObj) {
 async function toggleFavorite(event, animeObj) {
     event.stopPropagation();
     const idx = favoriteAnimes.findIndex(item => item.id === animeObj.id);
-    if (idx > -1) { favoriteAnimes.splice(idx, 1); event.currentTarget.classList.remove('favorited'); await deleteAnimeFromCloud(animeObj.id); }
-    else { favoriteAnimes.push(animeObj); event.currentTarget.classList.add('favorited'); await pushAnimeToCloud(animeObj); }
+    if (idx > -1) { 
+        favoriteAnimes.splice(idx, 1); 
+        event.currentTarget.classList.remove('favorited'); 
+        await deleteAnimeFromCloud(animeObj.id); 
+    }
+    else { 
+        favoriteAnimes.push(animeObj); 
+        event.currentTarget.classList.add('favorited'); 
+        await pushAnimeToCloud(animeObj); 
+    }
     localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
-    if (currentTab === 'mylist' || currentTab === 'done') loadTabContent();
+    if (currentTab === 'mylist') loadTabContent();
 }
 
 async function toggleStatus(event, animeObj) {
@@ -734,7 +779,7 @@ async function toggleStatus(event, animeObj) {
     localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
     const target = favoriteAnimes.find(a => a.id === animeObj.id);
     if (target) await pushAnimeToCloud(target);
-    if (currentTab === 'mylist' || currentTab === 'done') loadTabContent();
+    if (currentTab === 'mylist') loadTabContent();
 }
 
 function copyToClipboard(event, text) {
@@ -746,6 +791,7 @@ async function openModal(anime) {
     currentModalAnime = anime;
     const modalImg = document.getElementById('modal-img');
     modalImg.src = anime.image;
+    modalImg.alt = anime.title;
     modalImg.style.cursor = 'pointer';
     modalImg.title = 'Click to open preview stream';
     document.getElementById('modal-title').innerText = anime.title;
@@ -785,7 +831,7 @@ async function loadRecommendations(malId) {
             };
             const div = document.createElement('div');
             div.className = 'mini-card';
-            div.innerHTML = `<img src="${anime.image}" loading="lazy"><p>${anime.title}</p>`;
+            div.innerHTML = `<img src="${anime.image}" loading="lazy" alt="${anime.title}"><p>${anime.title}</p>`;
             div.onclick = async () => {
                 try {
                     const detailsResp = await fetch(`https://api.jikan.moe/v4/anime/${anime.id}/full`);
