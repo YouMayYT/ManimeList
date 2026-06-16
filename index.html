@@ -24,6 +24,16 @@
             <div class="autocomplete-box" id="recommend-autocomplete-box"></div>
         </div>
 
+        <div class="mylist-header" id="mylist-header" style="display: none;">
+            <div class="toggle-switch">
+                <input type="checkbox" id="list-toggle" onchange="toggleListView()">
+                <label for="list-toggle" class="toggle-label">
+                    <span class="toggle-text-in">IN PROGRESS</span>
+                    <span class="toggle-text-done">COMPLETED</span>
+                </label>
+            </div>
+        </div>
+
         <div id="account-panel" class="account-panel" style="display:none;">
             <div class="account-header">
                 <h3 class="account-title">ACCOUNT ACCESS</h3>
@@ -58,10 +68,6 @@
         <button class="nav-btn" onclick="switchTab('mylist')">
             <i class="fa-solid fa-bookmark"></i>
             <span>MY LIST</span>
-        </button>
-        <button class="nav-btn" onclick="switchTab('done')">
-            <i class="fa-solid fa-check-double"></i>
-            <span>DONE</span>
         </button>
         <button class="nav-btn" onclick="switchTab('account')">
             <i class="fa-solid fa-user"></i>
