@@ -1,7 +1,3 @@
-const SUPABASE_URL = 'https://ccfgybmuamyygxybimdx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZmd5Ym11YW15eWd4eWJpbWR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODA2NTksImV4cCI6MjA5NjI1NjY1OX0.yE7TMqJTTQJ5zXsHkM9jK8vL2pN3qR4sT6uV7wX8yZ9aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJkLm';
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 let currentUser = null;
 let currentTab = 'home';
 let showingCompletedOnly = false;
@@ -21,8 +17,9 @@ const recAutocompleteBox = document.getElementById('recommend-autocomplete-box')
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
+        console.log('App initializing...');
         enhanceAccountPanelUI();
-        await initAuth();
+        updateAuthStatus();
         loadTabContent();
         initDiscoverSelectionUI();
 
@@ -55,54 +52,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const modalImg = document.getElementById('modal-img');
         if (modalImg) modalImg.onclick = () => openPreviewFromModal();
+        
+        console.log('App initialized successfully');
     } catch (error) {
         console.error('Initialization error:', error);
     }
 });
 
-function setCookie(name, value, days = 30) {
-    const d = new Date();
-    d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
-    document.cookie = `${name}=${encodeURIComponent(value)};expires=${d.toUTCString()};path=/;SameSite=Lax`;
-}
-function getCookie(name) {
-    const key = `${name}=`;
-    const parts = document.cookie.split(';');
-    for (let p of parts) {
-        p = p.trim();
-        if (p.startsWith(key)) return decodeURIComponent(p.substring(key.length));
-    }
-    return '';
-}
-function deleteCookie(name) {
-    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Lax`;
-}
-
-function getProfileStore() { return JSON.parse(localStorage.getItem('cyberProfiles') || '{}'); }
-function saveProfileStore(store) { localStorage.setItem('cyberProfiles', JSON.stringify(store)); }
-function getDisplayNameForEmail(email) { return getProfileStore()[email] || ''; }
-function saveDisplayName(email, name) {
-    const store = getProfileStore();
-    store[email] = name;
-    saveProfileStore(store);
-    setCookie('cyber_display_name', name, 180);
-}
-function getInitial(v) { const raw = (v || '').trim(); return raw ? raw[0].toUpperCase() : '?'; }
-
-function getAccountsList() { return JSON.parse(localStorage.getItem('cyberAccounts') || '[]'); }
-function saveAccountsList(list) { localStorage.setItem('cyberAccounts', JSON.stringify(list)); }
-function addAccountToList(email) {
-    if (!email) return;
-    const list = getAccountsList().filter(e => e !== email);
-    list.unshift(email);
-    saveAccountsList(list);
-    renderAccountsList();
-}
-function removeAccountFromList(email) {
-    const list = getAccountsList().filter(e => e !== email);
-    saveAccountsList(list);
-    renderAccountsList();
-    return list;
+function getInitial(v) { 
+    const raw = (v || '').trim(); 
+    return raw ? raw[0].toUpperCase() : '?'; 
 }
 
 function enhanceAccountPanelUI() {
@@ -124,174 +83,10 @@ function enhanceAccountPanelUI() {
             </div>
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;">
-            <button id="quick-logout-btn" class="auth-btn logout" style="flex:1;" onclick="signOutAndRemoveCurrent()">Logout</button>
-            <button id="more-actions-btn" class="auth-btn login" style="flex:1;background:#334155;" onclick="toggleMoreActions()">More</button>
-        </div>
-        <div id="more-actions-box" style="display:none;margin-top:8px;border:1px solid #1e293b;padding:10px;background:rgba(2,6,23,.55);">
-            <button class="auth-btn" style="width:100%;background:#ef4444;color:#fff;margin-bottom:8px;" onclick="deleteCurrentAccountWithConfirm()">Delete Account</button>
-            <button class="auth-btn" style="width:100%;background:#f59e0b;color:#000;" onclick="clearCurrentAccountSavesWithConfirm()">Clear Saves</button>
+            <button id="quick-logout-btn" class="auth-btn logout" style="flex:1;" onclick="signOutUser()">Logout</button>
         </div>
     `;
     panel.appendChild(profileBlock);
-
-    const switcher = document.createElement('div');
-    switcher.id = 'accounts-switcher';
-    switcher.style.marginTop = '12px';
-    switcher.style.border = '1px solid #1e293b';
-    switcher.style.padding = '10px';
-    switcher.style.background = 'rgba(2,6,23,.35)';
-    switcher.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div style="font-weight:700;color:#93c5fd;">Saved Accounts</div>
-            <button onclick="openAddAccountFlow()" style="background:#00f3ff;color:#000;border:none;padding:6px 10px;cursor:pointer;font-weight:700;">+ Accounts</button>
-        </div>
-        <div id="accounts-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-    `;
-    panel.appendChild(switcher);
-    renderAccountsList();
-}
-
-function renderAccountsList() {
-    const listEl = document.getElementById('accounts-list');
-    if (!listEl) return;
-    const list = getAccountsList();
-    listEl.innerHTML = '';
-    if (!list.length) {
-        listEl.innerHTML = `<div style="color:#94a3b8;font-size:13px;">No accounts added yet.</div>`;
-        return;
-    }
-    list.forEach(email => {
-        const name = getDisplayNameForEmail(email) || email.split('@')[0] || 'User';
-        const isCurrent = currentUser?.email === email;
-        const row = document.createElement('button');
-        row.style.textAlign = 'left';
-        row.style.border = isCurrent ? '1px solid #00f3ff' : '1px solid #334155';
-        row.style.background = isCurrent ? 'rgba(0,243,255,.08)' : 'rgba(15,23,42,.4)';
-        row.style.color = '#e2e8f0';
-        row.style.padding = '8px';
-        row.style.cursor = 'pointer';
-        row.innerHTML = `<div style="font-weight:700;">${name}</div><div style="font-size:12px;color:#94a3b8;">${email}</div>`;
-        row.onclick = () => switchToAccount(email);
-        listEl.appendChild(row);
-    });
-}
-
-async function openAddAccountFlow() {
-    const email = window.prompt('Enter account email to login:') || '';
-    if (!email.trim()) return;
-    const password = window.prompt('Enter password:') || '';
-    if (!password.trim()) return;
-    const { error } = await supabaseClient.auth.signInWithPassword({ email: email.trim(), password: password.trim() });
-    if (error) return notify('error', 'Login failed', error.message);
-    addAccountToList(email.trim());
-    await ensureDisplayNameFlow();
-    await pullCloudList();
-    updateAuthStatus();
-    notify('success', 'Account added', `${email.trim()} is ready`);
-}
-
-async function switchToAccount(email) {
-    if (!email || currentUser?.email === email) return;
-    const password = window.prompt(`Enter password for ${email}`) || '';
-    if (!password.trim()) return;
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password: password.trim() });
-    if (error) return notify('error', 'Switch failed', error.message);
-    addAccountToList(email);
-    await ensureDisplayNameFlow();
-    await pullCloudList();
-    updateAuthStatus();
-    loadTabContent();
-    notify('success', 'Switched', `Now using ${email}`);
-}
-
-function toggleMoreActions() {
-    const box = document.getElementById('more-actions-box');
-    if (!box) return;
-    box.style.display = box.style.display === 'none' ? 'block' : 'none';
-}
-
-async function deleteCurrentAccountWithConfirm() {
-    if (!currentUser?.email) return;
-    const typed = window.prompt('Type "I agree" to delete account and all data:') || '';
-    if (typed !== 'I agree') return notify('error', 'Cancelled', 'Confirmation text mismatch.');
-    await clearCurrentAccountSavesRaw();
-    removeAccountFromList(currentUser.email);
-    await supabaseClient.auth.signOut();
-    currentUser = null;
-    favoriteAnimes = [];
-    localStorage.removeItem('myCyberAnimeList');
-    updateAuthStatus();
-    const top = getAccountsList()[0];
-    if (top) notify('info', 'Deleted locally', `Account removed from list. Select ${top} to login.`);
-    else notify('info', 'Deleted locally', 'Account removed from list.');
-}
-
-async function clearCurrentAccountSavesRaw() {
-    if (!currentUser) return;
-    await supabaseClient.from('user_anime_list').delete().eq('user_id', currentUser.id);
-    favoriteAnimes = [];
-    localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
-    if (currentTab === 'mylist' || currentTab === 'home') loadTabContent();
-}
-
-async function clearCurrentAccountSavesWithConfirm() {
-    if (!currentUser) return;
-    const typed = window.prompt('Type "I agree" to clear saved anime:') || '';
-    if (typed !== 'I agree') return notify('error', 'Cancelled', 'Confirmation text mismatch.');
-    await clearCurrentAccountSavesRaw();
-    notify('success', 'Cleared', 'All saved anime removed for this account.');
-}
-
-async function initAuth() {
-    try {
-        const { data } = await supabaseClient.auth.getSession();
-        currentUser = data.session?.user || null;
-        if (!currentUser) {
-            favoriteAnimes = [];
-            localStorage.removeItem('myCyberAnimeList');
-        }
-        updateAuthStatus();
-        if (currentUser) {
-            addAccountToList(currentUser.email);
-            await ensureDisplayNameFlow();
-            await pullCloudList();
-        }
-
-        supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-            currentUser = session?.user || null;
-            if (currentUser) {
-                addAccountToList(currentUser.email);
-                await ensureDisplayNameFlow();
-                await pullCloudList();
-                updateAuthStatus();
-                loadTabContent();
-            } else {
-                favoriteAnimes = [];
-                localStorage.removeItem('myCyberAnimeList');
-                updateAuthStatus();
-                loadTabContent();
-                const top = getAccountsList()[0];
-                if (top) notify('info', 'Select account', `Top account available: ${top}`);
-            }
-        });
-    } catch (error) {
-        console.error('Auth init error:', error);
-    }
-}
-
-async function ensureDisplayNameFlow() {
-    if (!currentUser?.email) return;
-    let name = getDisplayNameForEmail(currentUser.email) || getCookie('cyber_display_name');
-    if (!name) {
-        const suggested = currentUser.email.split('@')[0];
-        name = window.prompt('Set your display name:', suggested) || '';
-        name = name.trim();
-        if (!name) name = suggested || 'User';
-        saveDisplayName(currentUser.email, name);
-    }
-    setCookie('cyber_last_email', currentUser.email, 180);
-    setCookie('cyber_display_name', name, 180);
-    setCookie('cyber_logged_in', '1', 7);
 }
 
 function updateAuthStatus() {
@@ -299,19 +94,20 @@ function updateAuthStatus() {
     const badge = document.getElementById('auth-badge');
     const form = document.getElementById('auth-form-container');
     const profile = document.getElementById('profile-block');
-    const pName = document.getElementById('profile-name');
-    const pEmail = document.getElementById('profile-email');
-    const pAvatar = document.getElementById('profile-avatar');
+    
     if (!statusEl) return;
 
     if (currentUser) {
-        const name = getDisplayNameForEmail(currentUser.email) || getCookie('cyber_display_name') || 'User';
+        const name = currentUser.name || 'User';
         statusEl.textContent = `Connected as: ${name}`;
         if (badge) { badge.textContent = 'ONLINE'; badge.classList.add('online'); }
         if (form) form.style.display = 'none';
         if (profile) profile.style.display = 'block';
+        const pName = document.getElementById('profile-name');
+        const pEmail = document.getElementById('profile-email');
+        const pAvatar = document.getElementById('profile-avatar');
         if (pName) pName.textContent = name;
-        if (pEmail) pEmail.textContent = currentUser.email;
+        if (pEmail) pEmail.textContent = currentUser.email || 'local user';
         if (pAvatar) pAvatar.textContent = getInitial(name);
     } else {
         statusEl.textContent = 'No active session. Please login or create an account.';
@@ -319,7 +115,6 @@ function updateAuthStatus() {
         if (form) form.style.display = 'flex';
         if (profile) profile.style.display = 'none';
     }
-    renderAccountsList();
 }
 
 function notify(type, title, text, timeout = 3200) {
@@ -342,52 +137,38 @@ async function signUp() {
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value.trim();
     if (!email || !password) return notify('error', 'Missing fields', 'Enter both email and password.');
+    
     let displayName = window.prompt('Choose a username:', email.split('@')[0] || 'User') || '';
     displayName = displayName.trim() || email.split('@')[0] || 'User';
-    saveDisplayName(email, displayName);
-
-    const { error } = await supabaseClient.auth.signUp({ email, password });
-    if (error) return notify('error', 'Sign up failed', error.message);
-
-    setCookie('cyber_last_email', email, 180);
-    setCookie('cyber_display_name', displayName, 180);
-    notify('success', 'Account created', 'Sign up successful. Check your email if confirmation is enabled.');
+    
+    currentUser = { email, name: displayName };
+    updateAuthStatus();
+    document.getElementById('auth-email').value = '';
+    document.getElementById('auth-password').value = '';
+    notify('success', 'Account created', `Welcome ${displayName}! (Local storage only)`);
 }
 
 async function signIn() {
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value.trim();
     if (!email || !password) return notify('error', 'Missing fields', 'Enter both email and password.');
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) return notify('error', 'Login failed', error.message);
-
-    if (!getDisplayNameForEmail(email)) {
-        let name = window.prompt('Set your display name:', email.split('@')[0] || 'User') || '';
-        name = name.trim() || email.split('@')[0] || 'User';
-        saveDisplayName(email, name);
-    }
-
-    addAccountToList(email);
-    setCookie('cyber_last_email', email, 180);
-    setCookie('cyber_logged_in', '1', 7);
-    await pullCloudList();
+    
+    let displayName = window.prompt('Set your display name:', email.split('@')[0] || 'User') || '';
+    displayName = displayName.trim() || email.split('@')[0] || 'User';
+    
+    currentUser = { email, name: displayName };
     updateAuthStatus();
-    notify('success', 'Login success', `Welcome back ${getDisplayNameForEmail(email) || email}`);
+    document.getElementById('auth-email').value = '';
+    document.getElementById('auth-password').value = '';
+    notify('success', 'Login success', `Welcome back ${displayName}!`);
 }
 
-async function signOutAndRemoveCurrent() {
+async function signOutUser() {
     if (!currentUser?.email) return;
-    const removed = currentUser.email;
-    await supabaseClient.auth.signOut();
     currentUser = null;
-    favoriteAnimes = [];
-    localStorage.removeItem('myCyberAnimeList');
-    const list = removeAccountFromList(removed);
-    deleteCookie('cyber_logged_in');
     updateAuthStatus();
     loadTabContent();
-    if (list.length) notify('info', 'Account removed', `Top account is ${list[0]}. Tap to login.`);
-    else notify('info', 'Logged out', 'No accounts left in list.');
+    notify('info', 'Logged out', 'You have been logged out.');
 }
 
 function setupSearch(inputEl, boxEl, onSelect) {
@@ -437,6 +218,7 @@ function setupSearch(inputEl, boxEl, onSelect) {
         }
     });
 }
+
 function clearSearch() {
     activeSearchToken++;
     clearTimeout(searchTimeout);
@@ -493,6 +275,7 @@ async function fetchAutocomplete(query, boxEl, onSelect, inputEl, token) {
 function initDiscoverSelectionUI() {
     if (document.getElementById('discover-selection-btn')) return;
     const wrapper = document.getElementById('recommend-search-wrapper');
+    if (!wrapper) return;
     const btn = document.createElement('button');
     btn.id = 'discover-selection-btn';
     btn.innerHTML = '<i class="fa-solid fa-list-check"></i>';
@@ -536,6 +319,7 @@ function initDiscoverSelectionUI() {
     modal.addEventListener('click', (e) => { if (e.target.id === 'discover-selection-modal') closeSelectionModal(); });
     document.body.appendChild(modal);
 }
+
 function openSelectionModal() {
     const modal = document.getElementById('discover-selection-modal');
     const list = document.getElementById('discover-selection-list');
@@ -553,9 +337,24 @@ function openSelectionModal() {
     });
     modal.style.display = 'flex';
 }
-function closeSelectionModal() { document.getElementById('discover-selection-modal').style.display = 'none'; }
-function removeDiscoverSelection(id) { discoverSelections = discoverSelections.filter(a => a.id !== id); localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); openSelectionModal(); }
-function clearDiscoverSelections() { discoverSelections = []; localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); openSelectionModal(); if (currentTab === 'recommend') loadTabContent(); }
+
+function closeSelectionModal() { 
+    const modal = document.getElementById('discover-selection-modal');
+    if (modal) modal.style.display = 'none'; 
+}
+
+function removeDiscoverSelection(id) { 
+    discoverSelections = discoverSelections.filter(a => a.id !== id); 
+    localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); 
+    openSelectionModal(); 
+}
+
+function clearDiscoverSelections() { 
+    discoverSelections = []; 
+    localStorage.setItem('myDiscoverSelections', JSON.stringify(discoverSelections)); 
+    openSelectionModal(); 
+    if (currentTab === 'recommend') loadTabContent(); 
+}
 
 /**
  * Unified suggestion algorithm using genre and theme tags
@@ -611,37 +410,6 @@ async function runDiscoverSuggestions() {
     } catch (error) {
         console.error('Discover suggestions error:', error);
         grid.innerHTML = '<div class="msg-info">SUGGESTION FAILED.</div>';
-    }
-}
-
-async function pullCloudList() {
-    if (!currentUser) return;
-    try {
-        const { data, error } = await supabaseClient.from('user_anime_list').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false });
-        if (error) {
-            console.error('Pull cloud list error:', error);
-            return;
-        }
-        favoriteAnimes = (data || []).map(r => ({ id: r.anime_id, title: r.title, image: r.image, synopsis: r.synopsis, type: r.type, status: r.status, episodes: r.episodes, score: r.score, completed: r.completed || false }));
-        localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
-    } catch (error) {
-        console.error('Pull cloud list catch:', error);
-    }
-}
-async function pushAnimeToCloud(animeObj) {
-    if (!currentUser) return;
-    try {
-        await supabaseClient.from('user_anime_list').upsert({ user_id: currentUser.id, anime_id: animeObj.id, title: animeObj.title, image: animeObj.image, synopsis: animeObj.synopsis, type: animeObj.type, status: animeObj.status, episodes: animeObj.episodes, score: animeObj.score, completed: animeObj.completed || false });
-    } catch (error) {
-        console.error('Push anime to cloud error:', error);
-    }
-}
-async function deleteAnimeFromCloud(animeId) {
-    if (!currentUser) return;
-    try {
-        await supabaseClient.from('user_anime_list').delete().eq('user_id', currentUser.id).eq('anime_id', animeId);
-    } catch (error) {
-        console.error('Delete anime from cloud error:', error);
     }
 }
 
@@ -791,12 +559,10 @@ async function toggleFavorite(event, animeObj) {
     if (idx > -1) { 
         favoriteAnimes.splice(idx, 1); 
         event.currentTarget.classList.remove('favorited'); 
-        await deleteAnimeFromCloud(animeObj.id); 
     }
     else { 
         favoriteAnimes.push(animeObj); 
         event.currentTarget.classList.add('favorited'); 
-        await pushAnimeToCloud(animeObj); 
     }
     localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
     if (currentTab === 'mylist') loadTabContent();
@@ -808,8 +574,6 @@ async function toggleStatus(event, animeObj) {
     if (idx > -1) favoriteAnimes[idx].completed = !favoriteAnimes[idx].completed;
     else { animeObj.completed = true; favoriteAnimes.push(animeObj); }
     localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
-    const target = favoriteAnimes.find(a => a.id === animeObj.id);
-    if (target) await pushAnimeToCloud(target);
     if (currentTab === 'mylist') loadTabContent();
 }
 
