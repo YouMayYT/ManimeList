@@ -24,14 +24,14 @@
             <div class="autocomplete-box" id="recommend-autocomplete-box"></div>
         </div>
 
-        <div class="mylist-header" id="mylist-header" style="display: none;">
-            <div class="toggle-switch">
-                <input type="checkbox" id="list-toggle" onchange="toggleListView()">
-                <label for="list-toggle" class="toggle-label">
-                    <span class="toggle-text-in">IN PROGRESS</span>
-                    <span class="toggle-text-done">COMPLETED</span>
-                </label>
-            </div>
+        <div class="search-wrapper" id="mylist-search-wrapper" style="display: none;">
+            <i class="fa-solid fa-bookmark search-icon"></i>
+            <div style="flex:1;"></div>
+            <button id="mylist-toggle-btn" class="mylist-toggle-btn" onclick="toggleListView()">
+                <span class="toggle-state-in">IN PROGRESS</span>
+                <span class="toggle-state-done" style="display:none;">COMPLETED</span>
+                <i class="fa-solid fa-exchange"></i>
+            </button>
         </div>
 
         <div id="account-panel" class="account-panel" style="display:none;">
@@ -95,12 +95,11 @@
             <div class="more-like-this" id="modal-recommendations-container">
                 <h3>SIMILAR TARGETS DETECTED</h3>
                 <div class="recommendations-scroll" id="modal-recommendations">
-                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="script.js"></script>
 </body>
 </html>
