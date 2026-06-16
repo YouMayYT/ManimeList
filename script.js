@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://ccfgybmuamyygxybimdx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZmd5Ym11YW15eWd4eWJpbWR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODA2NTksImV4cCI6MjA5NjI1NjY1OX0.yE7TM[...]
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZmd5Ym11YW15eWd4eWJpbWR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODA2NTksImV4cCI6MjA5NjI1NjY1OX0.yE7TMqJTTQJ5zXsHkM9jK8vL2pN3qR4sT6uV7wX8yZ9aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJkLm';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
@@ -20,40 +20,44 @@ const recInput = document.getElementById('recommend-input');
 const recAutocompleteBox = document.getElementById('recommend-autocomplete-box');
 
 document.addEventListener('DOMContentLoaded', async () => {
-    enhanceAccountPanelUI();
-    await initAuth();
-    loadTabContent();
-    initDiscoverSelectionUI();
+    try {
+        enhanceAccountPanelUI();
+        await initAuth();
+        loadTabContent();
+        initDiscoverSelectionUI();
 
-    setupSearch(searchInput, autocompleteBox, (selectedItem) => {
-        searchInput.value = selectedItem.title;
-        autocompleteBox.style.display = 'none';
-        loadGridSearch(selectedItem.title);
-    });
+        setupSearch(searchInput, autocompleteBox, (selectedItem) => {
+            searchInput.value = selectedItem.title;
+            autocompleteBox.style.display = 'none';
+            loadGridSearch(selectedItem.title);
+        });
 
-    setupSearch(recInput, recAutocompleteBox, (selectedItem) => {
-        recInput.value = selectedItem.title;
-        recAutocompleteBox.style.display = 'none';
-        discoverResultsMode = 'search';
-        loadGridSearch(selectedItem.title);
-    });
-
-    recInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && recInput.value.trim()) {
-            discoverResultsMode = 'search';
+        setupSearch(recInput, recAutocompleteBox, (selectedItem) => {
+            recInput.value = selectedItem.title;
             recAutocompleteBox.style.display = 'none';
-            clearTimeout(searchTimeout);
-            loadGridSearch(recInput.value.trim());
-        }
-    });
+            discoverResultsMode = 'search';
+            loadGridSearch(selectedItem.title);
+        });
 
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('#main-search-wrapper')) autocompleteBox.style.display = 'none';
-        if (!e.target.closest('#recommend-search-wrapper')) recAutocompleteBox.style.display = 'none';
-    });
+        recInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && recInput.value.trim()) {
+                discoverResultsMode = 'search';
+                recAutocompleteBox.style.display = 'none';
+                clearTimeout(searchTimeout);
+                loadGridSearch(recInput.value.trim());
+            }
+        });
 
-    const modalImg = document.getElementById('modal-img');
-    if (modalImg) modalImg.onclick = () => openPreviewFromModal();
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#main-search-wrapper')) autocompleteBox.style.display = 'none';
+            if (!e.target.closest('#recommend-search-wrapper')) recAutocompleteBox.style.display = 'none';
+        });
+
+        const modalImg = document.getElementById('modal-img');
+        if (modalImg) modalImg.onclick = () => openPreviewFromModal();
+    } catch (error) {
+        console.error('Initialization error:', error);
+    }
 });
 
 function setCookie(name, value, days = 30) {
@@ -239,36 +243,40 @@ async function clearCurrentAccountSavesWithConfirm() {
 }
 
 async function initAuth() {
-    const { data } = await supabaseClient.auth.getSession();
-    currentUser = data.session?.user || null;
-    if (!currentUser) {
-        favoriteAnimes = [];
-        localStorage.removeItem('myCyberAnimeList');
-    }
-    updateAuthStatus();
-    if (currentUser) {
-        addAccountToList(currentUser.email);
-        await ensureDisplayNameFlow();
-        await pullCloudList();
-    }
-
-    supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-        currentUser = session?.user || null;
+    try {
+        const { data } = await supabaseClient.auth.getSession();
+        currentUser = data.session?.user || null;
+        if (!currentUser) {
+            favoriteAnimes = [];
+            localStorage.removeItem('myCyberAnimeList');
+        }
+        updateAuthStatus();
         if (currentUser) {
             addAccountToList(currentUser.email);
             await ensureDisplayNameFlow();
             await pullCloudList();
-            updateAuthStatus();
-            loadTabContent();
-        } else {
-            favoriteAnimes = [];
-            localStorage.removeItem('myCyberAnimeList');
-            updateAuthStatus();
-            loadTabContent();
-            const top = getAccountsList()[0];
-            if (top) notify('info', 'Select account', `Top account available: ${top}`);
         }
-    });
+
+        supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+            currentUser = session?.user || null;
+            if (currentUser) {
+                addAccountToList(currentUser.email);
+                await ensureDisplayNameFlow();
+                await pullCloudList();
+                updateAuthStatus();
+                loadTabContent();
+            } else {
+                favoriteAnimes = [];
+                localStorage.removeItem('myCyberAnimeList');
+                updateAuthStatus();
+                loadTabContent();
+                const top = getAccountsList()[0];
+                if (top) notify('info', 'Select account', `Top account available: ${top}`);
+            }
+        });
+    } catch (error) {
+        console.error('Auth init error:', error);
+    }
 }
 
 async function ensureDisplayNameFlow() {
@@ -471,11 +479,12 @@ async function fetchAutocomplete(query, boxEl, onSelect, inputEl, token) {
         data.data.forEach(item => {
             const div = document.createElement('div');
             div.className = 'suggestion-item';
-            div.innerHTML = `<img src="${item.images.jpg.small_image_url}"> <span>${item.title}</span>`;
+            div.innerHTML = `<img src="${item.images.jpg.small_image_url}" alt="${item.title}"> <span>${item.title}</span>`;
             div.onclick = () => onSelect({ id: item.mal_id, title: item.title });
             boxEl.appendChild(div);
         });
-    } catch {
+    } catch (error) {
+        console.error('Autocomplete error:', error);
         boxEl.style.display = 'none';
         boxEl.innerHTML = '';
     }
@@ -572,7 +581,8 @@ async function generateSuggestionsFromAnimes(animeIds) {
         
         const tags = [...tagSet].slice(0, 3);
         return tags.length > 0 ? tags.join(' ') : null;
-    } catch {
+    } catch (error) {
+        console.error('Suggestion generation error:', error);
         return null;
     }
 }
@@ -598,25 +608,41 @@ async function runDiscoverSuggestions() {
         const blocked = new Set(discoverSelections.map(s => s.id));
         const list = (data.data || []).filter(x => !blocked.has(x.mal_id));
         processApiData(list);
-    } catch {
+    } catch (error) {
+        console.error('Discover suggestions error:', error);
         grid.innerHTML = '<div class="msg-info">SUGGESTION FAILED.</div>';
     }
 }
 
 async function pullCloudList() {
     if (!currentUser) return;
-    const { data, error } = await supabaseClient.from('user_anime_list').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false });
-    if (error) return;
-    favoriteAnimes = (data || []).map(r => ({ id: r.anime_id, title: r.title, image: r.image, synopsis: r.synopsis, type: r.type, status: r.status, episodes: r.episodes, score: r.score, completed: r.completed || false }));
-    localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
+    try {
+        const { data, error } = await supabaseClient.from('user_anime_list').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false });
+        if (error) {
+            console.error('Pull cloud list error:', error);
+            return;
+        }
+        favoriteAnimes = (data || []).map(r => ({ id: r.anime_id, title: r.title, image: r.image, synopsis: r.synopsis, type: r.type, status: r.status, episodes: r.episodes, score: r.score, completed: r.completed || false }));
+        localStorage.setItem('myCyberAnimeList', JSON.stringify(favoriteAnimes));
+    } catch (error) {
+        console.error('Pull cloud list catch:', error);
+    }
 }
 async function pushAnimeToCloud(animeObj) {
     if (!currentUser) return;
-    await supabaseClient.from('user_anime_list').upsert({ user_id: currentUser.id, anime_id: animeObj.id, title: animeObj.title, image: animeObj.image, synopsis: animeObj.synopsis, type: animeObj.type, status: animeObj.status, episodes: animeObj.episodes, score: animeObj.score, completed: animeObj.completed || false });
+    try {
+        await supabaseClient.from('user_anime_list').upsert({ user_id: currentUser.id, anime_id: animeObj.id, title: animeObj.title, image: animeObj.image, synopsis: animeObj.synopsis, type: animeObj.type, status: animeObj.status, episodes: animeObj.episodes, score: animeObj.score, completed: animeObj.completed || false });
+    } catch (error) {
+        console.error('Push anime to cloud error:', error);
+    }
 }
 async function deleteAnimeFromCloud(animeId) {
     if (!currentUser) return;
-    await supabaseClient.from('user_anime_list').delete().eq('user_id', currentUser.id).eq('anime_id', animeId);
+    try {
+        await supabaseClient.from('user_anime_list').delete().eq('user_id', currentUser.id).eq('anime_id', animeId);
+    } catch (error) {
+        console.error('Delete anime from cloud error:', error);
+    }
 }
 
 function switchTab(tabName) {
@@ -629,7 +655,8 @@ function switchTab(tabName) {
     const activeBtn = [...document.querySelectorAll('.nav-btn')].find(b => b.getAttribute('onclick')?.includes(`'${tabName}'`));
     if (activeBtn) activeBtn.classList.add('active');
     document.getElementById('account-panel').style.display = tabName === 'account' ? 'block' : 'none';
-    document.getElementById('mylist-header').style.display = tabName === 'mylist' ? 'block' : 'none';
+    const mylistHeader = document.getElementById('mylist-header');
+    if (mylistHeader) mylistHeader.style.display = tabName === 'mylist' ? 'block' : 'none';
 
     if (tabName === 'recommend') {
         discoverResultsMode = 'search';
@@ -668,7 +695,8 @@ async function loadTabContent() {
         const response = await fetch('https://api.jikan.moe/v4/seasons/now?limit=24');
         const data = await response.json();
         processApiData(data.data);
-    } catch {
+    } catch (error) {
+        console.error('Load tab content error:', error);
         grid.innerHTML = '<div class="msg-info">CONNECTION FAILED.</div>';
     }
 }
@@ -681,7 +709,10 @@ async function loadGridSearch(query) {
         const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=24`);
         const data = await response.json();
         processApiData(data.data);
-    } catch { grid.innerHTML = '<div class="msg-info">SEARCH FAILED.</div>'; }
+    } catch (error) {
+        console.error('Search error:', error);
+        grid.innerHTML = '<div class="msg-info">SEARCH FAILED.</div>';
+    }
 }
 
 function processApiData(apiData) {
@@ -849,11 +880,14 @@ async function loadRecommendations(malId) {
                         imdb_id: d.external?.imdb || null,
                         completed: false
                     });
-                } catch {}
+                } catch (error) {
+                    console.error('Load recommendation detail error:', error);
+                }
             };
             holder.appendChild(div);
         });
-    } catch {
+    } catch (error) {
+        console.error('Load recommendations error:', error);
         holder.innerHTML = '<p style="color:#94a3b8;">Failed to load similar targets.</p>';
     }
 }
